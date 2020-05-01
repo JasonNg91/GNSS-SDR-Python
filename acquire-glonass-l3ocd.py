@@ -6,7 +6,7 @@ import numpy as np
 import scipy.signal
 import scipy.fftpack as fft
 
-import gnsstools.beidou.b3i as b3i
+import gnsstools.glonass.l3ocd as l3ocd
 import gnsstools.nco as nco
 import gnsstools.io as io
 import gnsstools.util as util
@@ -19,8 +19,8 @@ def search(x,prn,doppler_search,ms):
   fs = 3*10230000.0
   n = 3*10230                                       # 1 ms coherent integration
   doppler_min, doppler_max, doppler_incr = doppler_search
-  incr = float(b3i.code_length)/n
-  c = b3i.code(prn,0,0,incr,n)                      # obtain samples of the B3I code
+  incr = float(l3ocd.code_length)/n
+  c = l3ocd.code(prn,0,0,incr,n)                     # obtain samples of the L3-I code
   c = fft.fft(np.concatenate((c,np.zeros(n))))
   m_metric,m_code,m_doppler = 0,0,0
   for doppler in np.arange(doppler_min,doppler_max,doppler_incr):        # doppler bins
@@ -34,31 +34,31 @@ def search(x,prn,doppler_search,ms):
     idx = np.argmax(q)
     if q[idx]>m_metric:
       m_metric = q[idx]
-      m_code = b3i.code_length*(float(idx)/n)
+      m_code = l3ocd.code_length*(float(idx)/n)
       m_doppler = doppler
-  m_code = m_code%b3i.code_length
+  m_code = m_code%l3ocd.code_length
   return m_metric,m_code,m_doppler
 
 #
 # main program
 #
 
-parser = optparse.OptionParser(usage="""acquire-beidou-b3i.py [options] input_filename sample_rate carrier_offset
+parser = optparse.OptionParser(usage="""acquire-gps-l3ocd.py [options] input_filename sample_rate carrier_offset
 
-Acquire BeiDou B3I signals
+Acquire GLONASS L3OCd signals
 
 Examples:
-  Acquire all BeiDou PRNs using standard input with sample rate 69.984 MHz and carrier offset -5.134125 MHz:
-    acquire-beidou-b3i.py /dev/stdin 69984000 -5134125
+  Acquire all GLONASS channels using standard input with sample rate 69.984 MHz and carrier offset 10.383375 MHz:
+    acquire-glonass-l3ocd.py /dev/stdin 69984000 10383375
 
 Arguments:
   input_filename    input data file, i/q interleaved, 8 bit signed
   sample_rate       sampling rate in Hz
-  carrier_offset    offset to B3 carrier in Hz (positive or negative)""")
+  carrier_offset    offset to L3 carrier in Hz (positive or negative)""")
 
 parser.disable_interspersed_args()
 
-parser.add_option("--prn", default="1-63", help="PRNs to search, e.g. 1,3,7-14,31 (default %default)")
+parser.add_option("--prn", default="0-63", help="PRNs to search, e.g. 1,3-8,30 (default %default)")
 parser.add_option("--doppler-search", metavar="MIN,MAX,INCR", default="-7000,7000,200", help="Doppler search grid: min,max,increment (default %default)")
 parser.add_option("--time", type="int", default=80, help="integration time in milliseconds (default %default)")
 

@@ -4,7 +4,7 @@ import optparse
 
 import numpy as np
 
-import gnsstools.beidou.b1cp as b1cp
+import gnsstools.glonass.l3ocp as l3ocp
 import gnsstools.nco as nco
 import gnsstools.io as io
 import gnsstools.discriminator as discriminator
@@ -36,11 +36,11 @@ def track(x,s):
   s.carrier_p = s.carrier_p - n*s.carrier_f/fs
   s.carrier_p = np.mod(s.carrier_p,1)
 
-  cf = (s.code_f+s.carrier_f/1540.0)/fs
+  cf = (s.code_f+s.carrier_f/117.5)/fs
 
-  p_early = b1cp.correlate(x, s.prn, 0, s.code_p-0.2, cf, b1cp.b1cp_code(prn), b1cp.boc11)
-  p_prompt = b1cp.correlate(x, s.prn, 0, s.code_p, cf, b1cp.b1cp_code(prn), b1cp.boc11)
-  p_late = b1cp.correlate(x, s.prn, 0, s.code_p+0.2, cf, b1cp.b1cp_code(prn), b1cp.boc11)
+  p_early = l3ocp.correlate(x, s.prn, 0, s.code_p-0.5, cf, l3ocp.l3ocp_code(prn))
+  p_prompt = l3ocp.correlate(x, s.prn, 0, s.code_p, cf, l3ocp.l3ocp_code(prn))
+  p_late = l3ocp.correlate(x, s.prn, 0, s.code_p+0.5, cf, l3ocp.l3ocp_code(prn))
 
   if s.mode=='FLL_WIDE':
     fll_k = 3.0
@@ -81,7 +81,7 @@ def track(x,s):
   s.code_e1 = e
 
   s.code_p = s.code_p + n*cf
-  s.code_p = np.mod(s.code_p,b1cp.code_length)
+  s.code_p = np.mod(s.code_p,l3ocp.code_length)
 
   return p_prompt,s
 
@@ -89,20 +89,20 @@ def track(x,s):
 # main program
 #
 
-parser = optparse.OptionParser(usage="""track-beidou-b1cp.py [options] input_filename sample_rate carrier_offset PRN doppler code_offset
+parser = optparse.OptionParser(usage="""track-glonass-l3ocp.py [options] input_filename sample_rate carrier_offset PRN doppler code_offset
 
-Track BeiDou B1Cp signal
+Track GLONASS L3OCp signal
 
 Examples:
   Track with default options:
-    track-beidou-b1cp.py /dev/stdin 69984000 -9334875 31 1200.0 831.15
+    track-glonass-l3ocp.py /dev/stdin 69984000 10383375 31 800.0 126.7
   Track with pure PLL (no FLL intervals at the start) and with a specified carrier phase:
-    track-beidou-b1cp.py --carrier-phase 0.214 /dev/stdin 69984000 -9334875 31 1200.0 831.15
+    track-glonass-l3ocp.py --carrier-phase 0.214 /dev/stdin 69984000 10383375 31 800.0 126.7
 
 Arguments:
   input_filename    input data file, i/q interleaved, 8 bit signed
   sample_rate       sampling rate in Hz
-  carrier_offset    offset to L1 carrier in Hz (positive or negative)
+  carrier_offset    offset to carrier for channel 0 in Hz (positive or negative)
   PRN               PRN
   doppler           Doppler estimate from acquisition
   code_offset       Code-offset estimate from acquisition""")
@@ -130,13 +130,13 @@ fll_wide_time,fll_narrow_time = loop_dwells
 
 fp = open(filename,"rb")
 
-n = int(fs*0.01*((b1cp.code_length-code_offset)/b1cp.code_length))  # align with 10 ms code boundary
+n = int(fs*0.001*((l3ocp.code_length-code_offset)/l3ocp.code_length))  # align with 1 ms code boundary
 x = io.get_samples_complex(fp,n)
-code_offset += n*100.0*b1cp.code_length/fs
+code_offset += n*1000.0*l3ocp.code_length/fs
 
 s = tracking_state(fs=fs, prn=prn,                    # initialize tracking state
-  code_p=code_offset, code_f=b1cp.chip_rate, code_i=0,
-  carrier_p=carrier_p, carrier_f=doppler, carrier_i=0,
+  code_p=code_offset, code_f=l3ocp.chip_rate, code_i=0,
+  carrier_p=0, carrier_f=doppler, carrier_i=0,
   mode='FLL_WIDE')
 
 block = 0
@@ -148,10 +148,10 @@ while True:
   if block>=fll_wide_time+fll_narrow_time:
     s.mode = 'PLL'
 
-  if s.code_p<b1cp.code_length/2:
-    n = int(fs*0.01*(b1cp.code_length-s.code_p)/b1cp.code_length)
+  if s.code_p<l3ocp.code_length/2:
+    n = int(fs*0.001*(l3ocp.code_length-s.code_p)/l3ocp.code_length)
   else:
-    n = int(fs*0.01*(2*b1cp.code_length-s.code_p)/b1cp.code_length)
+    n = int(fs*0.001*(2*l3ocp.code_length-s.code_p)/l3ocp.code_length)
 
   x = io.get_samples_complex(fp,n)
   if x is None:
@@ -161,10 +161,8 @@ while True:
   coffset_phase = coffset_phase - n*coffset/fs
   coffset_phase = np.mod(coffset_phase,1)
 
-  for j in range(10):
-    a,b = int(j*n/10),int((j+1)*n/10)
-    p_prompt,s = track(x[a:b],s)
-    vars = block, np.real(p_prompt), np.imag(p_prompt), s.carrier_f, s.code_f-b1cp.chip_rate, (180/np.pi)*np.angle(p_prompt), s.early, s.prompt, s.late
-    print('%d %f %f %f %f %f %f %f %f' % vars)
+  p_prompt,s = track(x,s)
+  vars = block, np.real(p_prompt), np.imag(p_prompt), s.carrier_f, s.code_f-l3ocp.chip_rate, (180/np.pi)*np.angle(p_prompt), s.early, s.prompt, s.late
+  print('%d %f %f %f %f %f %f %f %f' % vars)
 
-    block = block + 1
+  block = block + 1

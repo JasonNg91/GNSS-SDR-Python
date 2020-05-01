@@ -1,4 +1,4 @@
-# GLONASS L3OC-Q (pilot signal) code construction
+# GLONASS L3OCp (pilot signal) code construction
 #
 # Copyright 2014 Peter Monta
 
@@ -22,8 +22,8 @@ def seq(n):
     s = s + [(n>>(6-i))&1]
   return s
 
-def make_l3q(n):
-  g1 = seq(n)
+def make_l3ocp(n):
+  g1 = seq(n+64)
   g2 = [0,0,1,1,0,1,0,0,1,1,1,0,0,0]
   x = np.zeros(code_length)
   for i in range(code_length):
@@ -34,13 +34,13 @@ def make_l3q(n):
 
 codes = {}
 
-def l3q_code(n):
+def l3ocp_code(n):
   if n not in codes:
-    codes[n] = make_l3q(n)
+    codes[n] = make_l3ocp(n)
   return codes[n]
 
 def code(prn,chips,frac,incr,n):
-  c = l3q_code(prn)
+  c = l3ocp_code(prn)
   idx = (chips%code_length) + frac + incr*np.arange(n)
   idx = np.floor(idx).astype('int')
   idx = np.mod(idx,code_length)
@@ -67,7 +67,7 @@ def correlate(x,prn,chips,frac,incr,c):
 
 if __name__=='__main__':
   import sys
-  c = l3q_code(30)
+  c = l3ocp_code(30)
   for i in range(200):
     sys.stdout.write('%d'%c[i])
   sys.stdout.write('\n')
